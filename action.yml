@@ -4,13 +4,13 @@ description: Translate the Readme to another language
 
 inputs:
   LANG:
-    description: 'The Language you want to translate to'
+    description: "The Language you want to translate to"
     required: false
-    default: 'zh-CN'
+    default: "zh-CN"
 
 runs:
-  using: 'node12'
-  main: 'dist/index.js'
+  using: "node12"
+  main: "dist/index.js"
 
 branding:
   icon: book-open
