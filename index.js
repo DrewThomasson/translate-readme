@@ -20,15 +20,13 @@ const toMarkdown = (ast) => {
 };
 
 const mainDir = ".";
-let README = readdirSync(mainDir).includes("readme.md")
-  ? "readme.md"
-  : "README.md";
+let README = readdirSync(mainDir).includes("readme.md") ? "readme.md" : "README.md";
 const lang = core.getInput("LANG") || "zh-CN";
 const readme = readFileSync(join(mainDir, README), { encoding: "utf8" });
 const readmeAST = toAst(readme);
 console.log("AST CREATED AND READ");
 
-// Ensure the translations folder exists in the repo root
+// Ensure the translations folder exists
 const translationsDir = join(mainDir, "readme");
 if (!existsSync(translationsDir)) {
   mkdirSync(translationsDir);
@@ -37,7 +35,7 @@ if (!existsSync(translationsDir)) {
 
 let originalText = [];
 
-// Traverse the AST and translate text nodes
+// Translate the text nodes
 visit(readmeAST, async (node) => {
   if (node.type === "text") {
     originalText.push(node.value);
@@ -64,9 +62,14 @@ async function commitChanges(branchName) {
   await git.add("./*");
   await git.addConfig("user.name", "github-actions[bot]");
   await git.addConfig("user.email", "41898282+github-actions[bot]@users.noreply.github.com");
-  await git.commit(`docs: Added README."${lang}".md translation via custom action`);
+
+  // Authenticate Git push using GITHUB_TOKEN
+  const githubToken = process.env.GITHUB_TOKEN;
+  await git.addConfig("http.https://github.com/.extraheader", `AUTHORIZATION: bearer ${githubToken}`);
+
+  await git.commit(`docs: Added README.${lang}.md translation via custom action`);
   console.log("Finished commit");
-  await git.push("origin", branchName);
+  await git.push("origin", branchName, { "--force": null });
   console.log("Pushed branch:", branchName);
 }
 
@@ -86,9 +89,9 @@ async function createPR(branchName) {
 
 async function translateReadme() {
   try {
-    // Use a static branch name based on the language
     const branchName = `readme-translation-${lang}`;
-    // Check if the branch exists
+
+    // Check if branch exists and switch to it, otherwise create it
     const branches = await git.branch();
     if (branches.all.includes(branchName)) {
       await git.checkout(branchName);
