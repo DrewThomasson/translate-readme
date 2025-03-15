@@ -1,3 +1,5 @@
+# This modifed one makes the Translated readme files be out in a folder called `readme` and also creates a PR that you have to maually merge allowing you to double check beforehand.
+
 # Translate Readme Action
 
 ## README Translation
