@@ -1,4 +1,4 @@
-const { readFileSync, writeFileSync, readdirSync } = require("fs");
+const { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } = require("fs");
 const { join } = require("path");
 const core = require("@actions/core");
 const $ = require("@k3rn31p4nic/google-translate-api");
@@ -7,6 +7,8 @@ const parse = require("remark-parse");
 const stringify = require("remark-stringify");
 const visit = require("unist-util-visit");
 const simpleGit = require("simple-git");
+const { exec } = require("child_process");
+
 const git = simpleGit();
 
 const toAst = (markdown) => {
@@ -26,8 +28,16 @@ const readme = readFileSync(join(mainDir, README), { encoding: "utf8" });
 const readmeAST = toAst(readme);
 console.log("AST CREATED AND READ");
 
+// Ensure the translations folder exists in the repo root
+const translationsDir = join(mainDir, "readme");
+if (!existsSync(translationsDir)) {
+  mkdirSync(translationsDir);
+  console.log(`Created folder: ${translationsDir}`);
+}
+
 let originalText = [];
 
+// Traverse the AST and translate text nodes
 visit(readmeAST, async (node) => {
   if (node.type === "text") {
     originalText.push(node.value);
@@ -42,34 +52,56 @@ const translatedText = originalText.map(async (text) => {
 async function writeToFile() {
   await Promise.all(translatedText);
   writeFileSync(
-    join(mainDir, `README.${lang}.md`),
+    join(translationsDir, `README.${lang}.md`),
     toMarkdown(readmeAST),
     "utf8"
   );
-  console.log(`README.${lang}.md written`);
+  console.log(`README.${lang}.md written in the "readme" folder`);
 }
 
-async function commitChanges(lang) {
-  console.log("commit started");
+async function commitChanges(branchName) {
+  console.log("Commit started");
   await git.add("./*");
   await git.addConfig("user.name", "github-actions[bot]");
-  await git.addConfig(
-    "user.email",
-    "41898282+github-actions[bot]@users.noreply.github.com"
+  await git.addConfig("user.email", "41898282+github-actions[bot]@users.noreply.github.com");
+  await git.commit(`docs: Added README."${lang}".md translation via custom action`);
+  console.log("Finished commit");
+  await git.push("origin", branchName);
+  console.log("Pushed branch:", branchName);
+}
+
+async function createPR(branchName) {
+  console.log("Creating pull request...");
+  exec(
+    `gh pr create --title "Translate README to ${lang}" --body "This PR adds a translated README for ${lang}." --base main --head ${branchName}`,
+    (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error creating PR: ${error}`);
+        return;
+      }
+      console.log(`PR created: ${stdout}`);
+    }
   );
-  await git.commit(
-    `docs: Added README."${lang}".md translation via https://github.com/dephraiim/translate-readme`
-  );
-  console.log("finished commit");
-  await git.push();
-  console.log("pushed");
 }
 
 async function translateReadme() {
   try {
+    // Use a static branch name based on the language
+    const branchName = `readme-translation-${lang}`;
+    // Check if the branch exists
+    const branches = await git.branch();
+    if (branches.all.includes(branchName)) {
+      await git.checkout(branchName);
+      console.log(`Checked out existing branch: ${branchName}`);
+    } else {
+      await git.checkoutLocalBranch(branchName);
+      console.log(`Created new branch: ${branchName}`);
+    }
+
     await writeToFile();
-    await commitChanges(lang);
-    console.log("Done");
+    await commitChanges(branchName);
+    await createPR(branchName);
+    console.log("Translation complete and PR created.");
   } catch (error) {
     throw new Error(error);
   }
